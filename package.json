@@ -1,0 +1,16 @@
+{
+  "name": "fb-leads-extractor",
+  "private": true,
+  "workspaces": [
+    "frontend",
+    "netlify/functions"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspace=frontend",
+    "build": "npm run build --workspace=frontend && npm run build --workspace=netlify/functions",
+    "lint": "npm run lint --workspace=frontend"
+  },
+  "devDependencies": {
+    "express": "^5.2.1"
+  }
+}
