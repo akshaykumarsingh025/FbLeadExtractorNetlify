@@ -10,5 +10,4 @@ jobs:
       - name: Trigger Netlify Sync Endpoint
         run: |
           curl -X POST "${{ secrets.PROD_URL }}/api/poll-leads" \
-          -H "Content-Type: application/json" \
-          -H "x-cron-secret: ${{ secrets.CRON_SECRET }}"
+          -H "Content-Type: application/json"
