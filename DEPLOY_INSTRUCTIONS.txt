@@ -1,0 +1,460 @@
+================================================================================
+  LeadSync - Facebook Leads to Google Sheets
+  Complete Deployment & Setup Guide
+================================================================================
+
+This guide walks you through deploying LeadSync on Netlify (free tier) with
+Supabase (free tier) as the database.
+
+────────────────────────────────────────────────────────────────────────────────
+  TABLE OF CONTENTS
+────────────────────────────────────────────────────────────────────────────────
+
+  1. Prerequisites
+  2. Supabase Setup (Database)
+  3. Facebook App Setup (OAuth + Lead Ads)
+  4. Google Cloud Setup (OAuth + Sheets API)
+  5. Netlify Deployment
+  6. Post-Deployment Configuration
+  7. Cron Setup (Auto-Polling)
+  8. Testing Your Setup
+  9. Troubleshooting
+  10. Free Tier Limits
+
+
+================================================================================
+  1. PREREQUISITES
+================================================================================
+
+  - A GitHub account (to connect Netlify)
+  - A Facebook account with a Facebook Page that has Lead Ads
+  - A Google account with access to Google Sheets
+  - Node.js 18+ installed locally (for testing)
+
+
+================================================================================
+  2. SUPABASE SETUP (Database)
+================================================================================
+
+  Step 1: Create a Supabase account
+  ---------------------------------
+  Go to: https://supabase.com
+  Sign up for free (GitHub login works).
+
+  Step 2: Create a new project
+  ----------------------------
+  - Click "New Project"
+  - Name: "leadsync" (or anything you like)
+  - Database Password: set a strong password (save it somewhere)
+  - Region: South Asia (Mumbai) — best for India
+  - Click "Create new project"
+  - Wait 1-2 minutes for it to initialize
+
+  Step 3: Run the database schema
+  -------------------------------
+  - In your Supabase project, go to "SQL Editor" (left sidebar)
+  - Click "New query"
+  - Copy and paste the ENTIRE contents of: supabase/schema.sql
+  - Click "Run" (or press Ctrl+Enter)
+  - You should see "Success. No rows returned" — that's correct
+
+  Step 4: Get your credentials
+  ----------------------------
+  - Go to "Settings" → "API" (left sidebar)
+  - Copy these two values (you'll need them for Netlify):
+
+    SUPABASE_URL = https://xxxxxxxxxx.supabase.co    (Project URL)
+    SUPABASE_SERVICE_ROLE_KEY = eyJhbGci...           (service_role key, NOT anon key)
+
+  ⚠️  WARNING: Use the "service_role" key, NOT the "anon" key.
+  The service_role key has full database access needed by the backend.
+
+
+================================================================================
+  3. FACEBOOK APP SETUP (OAuth + Lead Ads)
+================================================================================
+
+  Step 1: Create a Facebook App
+  -----------------------------
+  Go to: https://developers.facebook.com
+  - Click "My Apps" → "Create App"
+  - App Type: "Business"
+  - App Name: "LeadSync" (or anything)
+  - Click "Create App"
+
+  Step 2: Add Facebook Login product
+  -----------------------------------
+  - In your app dashboard, click "Add Product"
+  - Find "Facebook Login" → click "Set Up"
+  - Choose "Web"
+  - Skip the quickstart
+
+  Step 3: Configure OAuth redirect
+  ---------------------------------
+  - Go to Facebook Login → Settings
+  - In "Valid OAuth Redirect URIs", add:
+      https://YOUR-SITE-NAME.netlify.app/api/oauth-callback
+  - Click "Save Changes"
+
+  Step 4: Get your credentials
+  ----------------------------
+  - Go to "Settings" → "Basic"
+  - Copy these values:
+
+    FACEBOOK_APP_ID = 1234567890
+    FACEBOOK_APP_SECRET = abcdef1234567890
+
+  Step 5: Request permissions (for production)
+  ---------------------------------------------
+  By default your app is in "Development" mode and only works for
+  app admins/developers/testers. For production:
+
+  - Go to "App Review" → "Permissions and Features"
+  - Request these permissions:
+      • pages_show_list
+      • pages_read_engagement
+      • pages_manage_ads
+      • pages_manage_leads
+      • pages_read_user_content
+  - Submit for review (Facebook may take a few days)
+
+  NOTE: While in development mode, add yourself as a tester:
+  - Go to "Roles" → "Test Users" or add your Facebook account
+    under "Roles" → "People"
+
+
+================================================================================
+  4. GOOGLE CLOUD SETUP (OAuth + Sheets API)
+================================================================================
+
+  Step 1: Create a Google Cloud project
+  --------------------------------------
+  Go to: https://console.cloud.google.com
+  - Click the project dropdown (top bar) → "New Project"
+  - Name: "LeadSync"
+  - Click "Create"
+  - Select the new project
+
+  Step 2: Enable APIs
+  -------------------
+  Go to: APIs & Services → Library
+  - Search "Google Sheets API" → click it → "Enable"
+  - Search "Google Drive API" → click it → "Enable"
+
+  Step 3: Create OAuth credentials
+  ---------------------------------
+  Go to: APIs & Services → Credentials
+  - Click "Create Credentials" → "OAuth client ID"
+  - If prompted, configure the OAuth Consent Screen first:
+      • User Type: External
+      • App name: "LeadSync"
+      • Support email: your email
+      • Scopes: add these two:
+          - https://www.googleapis.com/auth/spreadsheets
+          - https://www.googleapis.com/auth/drive.file
+      • Test users: add your Google email
+      • Save
+
+  - Back at Credentials → "Create Credentials" → "OAuth client ID"
+  - Application type: "Web application"
+  - Name: "LeadSync"
+  - Authorized redirect URIs: add:
+      https://YOUR-SITE-NAME.netlify.app/api/oauth-callback
+  - Click "Create"
+
+  Step 4: Get your credentials
+  ----------------------------
+  Copy these values:
+
+    GOOGLE_CLIENT_ID = 497099388222-xxxxx.apps.googleusercontent.com
+    GOOGLE_CLIENT_SECRET = GOCSPX-xxxxxxxxxxxxxxxx
+
+  NOTE: While the app is in "Testing" status, only users listed as
+  test users can authorize. You can publish the app later for public access.
+
+
+================================================================================
+  5. NETLIFY DEPLOYMENT
+================================================================================
+
+  Step 1: Push code to GitHub
+  ---------------------------
+  Make sure your code is committed and pushed:
+
+    git add .
+    git commit -m "Ready for Netlify deployment"
+    git push origin master
+
+  ⚠️  Make sure .env and .tokens.json are NOT committed (they're in .gitignore)
+
+  Step 2: Create Netlify account
+  ------------------------------
+  Go to: https://app.netlify.com
+  Sign up with GitHub.
+
+  Step 3: Import your repository
+  -------------------------------
+  - Click "Add new site" → "Import an existing project"
+  - Choose GitHub → authorize Netlify → select your repository
+  - Build settings should auto-detect from netlify.toml:
+      Build command:    npm run build
+      Publish directory: frontend/dist
+      Functions directory: netlify/functions/dist
+  - Click "Deploy site"
+
+  Step 4: Set environment variables
+  ----------------------------------
+  - Go to: Site settings → Environment variables
+  - Add each of these (click "Add a variable" for each):
+
+    ┌─────────────────────────────┬──────────────────────────────────────┐
+    │ Key                         │ Value                                │
+    ├─────────────────────────────┼──────────────────────────────────────┤
+    │ SUPABASE_URL                │ https://xxx.supabase.co              │
+    │ SUPABASE_SERVICE_ROLE_KEY   │ eyJhbGci...                          │
+    │ FACEBOOK_APP_ID             │ 1234567890                           │
+    │ FACEBOOK_APP_SECRET         │ abcdef1234567890                     │
+    │ GOOGLE_CLIENT_ID            │ 497099..googleusercontent.com        │
+    │ GOOGLE_CLIENT_SECRET        │ GOCSPX-xxx                           │
+    │ CRON_SECRET                 │ any-random-string-you-choose         │
+    └─────────────────────────────┴──────────────────────────────────────┘
+
+  ⚠️  Do NOT set "URL" — Netlify auto-injects this as your site URL.
+
+  Step 5: Trigger a redeploy
+  --------------------------
+  After setting env vars, trigger a redeploy:
+  - Go to "Deploys" → click "Trigger deploy" → "Deploy site"
+
+  Step 6: Get your site URL
+  -------------------------
+  Your site will be live at:
+    https://YOUR-SITE-NAME.netlify.app
+
+  You can customize the subdomain:
+  - Site settings → Domain management → Edit site name
+
+
+================================================================================
+  6. POST-DEPLOYMENT CONFIGURATION
+================================================================================
+
+  After your site is live, update OAuth redirect URIs with your actual URL:
+
+  Facebook:
+  ---------
+  - Go to: https://developers.facebook.com → Your App → Facebook Login → Settings
+  - Update "Valid OAuth Redirect URIs" to:
+      https://YOUR-SITE-NAME.netlify.app/api/oauth-callback
+
+  Google:
+  -------
+  - Go to: https://console.cloud.google.com → Your Project → APIs & Services → Credentials
+  - Edit your OAuth 2.0 Client ID
+  - Update "Authorized redirect URIs" to:
+      https://YOUR-SITE-NAME.netlify.app/api/oauth-callback
+
+
+================================================================================
+  7. CRON SETUP (Auto-Polling for New Leads)
+================================================================================
+
+  Netlify's free tier doesn't support scheduled functions. Use a free
+  external cron service to trigger lead polling automatically.
+
+  Option A: cron-job.org (Recommended — Free)
+  --------------------------------------------
+  Go to: https://cron-job.org
+  - Create a free account
+  - Click "CREATE CRONJOB"
+  - Settings:
+      Title:  LeadSync Poll
+      URL:    https://YOUR-SITE-NAME.netlify.app/api/poll-leads
+      Schedule: Every 15 minutes (or however often you want)
+      Request Method: POST (if available) or GET
+      Headers: Add custom header:
+          Key:   x-cron-secret
+          Value: (same value you set in CRON_SECRET env var)
+  - Save and enable
+
+  Option B: Manual polling
+  ------------------------
+  You can also click "Sync Now" in the dashboard UI to manually
+  trigger polling at any time.
+
+
+================================================================================
+  8. TESTING YOUR SETUP
+================================================================================
+
+  Step 1: Open your site
+  ----------------------
+    https://YOUR-SITE-NAME.netlify.app
+
+  Step 2: Connect Facebook
+  ------------------------
+  - Click "Connect" next to Facebook Lead Ads
+  - Authorize with your Facebook account
+  - You should be redirected back with "Connected" status
+
+  Step 3: Connect Google
+  ----------------------
+  - Click "Connect" next to Google Sheets
+  - Authorize with your Google account
+  - You should be redirected back with "Connected" status
+
+  Step 4: Create an integration
+  -----------------------------
+  - Click "Go to Dashboard" → "New Integration"
+  - Select your Facebook Page → select a Lead Form
+  - Select a Google Spreadsheet → select a worksheet
+  - Map Facebook form fields to spreadsheet columns
+  - Click "Create Integration"
+
+  Step 5: Test the sync
+  ---------------------
+  - Click "Sync Now" in the dashboard
+  - Check your Google Sheet — new leads should appear
+
+  Step 6: Verify cron (if set up)
+  -------------------------------
+  - Wait for the cron interval to pass
+  - Check the "History" page to see poll activity logs
+
+
+================================================================================
+  9. TROUBLESHOOTING
+================================================================================
+
+  Problem: OAuth redirect fails with "redirect_uri_mismatch"
+  ----------------------------------------------------------
+  → Make sure the redirect URI in Facebook/Google settings EXACTLY matches:
+     https://YOUR-SITE-NAME.netlify.app/api/oauth-callback
+  → No trailing slash, exact case match
+
+  Problem: "Missing SUPABASE_URL" error in function logs
+  ------------------------------------------------------
+  → Check that env vars are set in Netlify dashboard
+  → Redeploy after adding/changing env vars
+
+  Problem: "Facebook not connected" when listing pages
+  ---------------------------------------------------
+  → Your Facebook token may have expired
+  → Go to the home page and reconnect Facebook
+
+  Problem: "Google token expired and no refresh token available"
+  ------------------------------------------------------------
+  → Reconnect Google from the home page
+  → Make sure your Google OAuth consent screen has access_type=offline
+
+  Problem: Functions timing out (10 second limit)
+  -----------------------------------------------
+  → The poll-leads function processes integrations in parallel
+  → If you have many integrations or very large lead batches,
+     consider reducing polling frequency or splitting integrations
+
+  Problem: Build fails on Netlify
+  ------------------------------
+  → Check build logs in Netlify dashboard under "Deploys"
+  → Make sure Node 18 is being used (check netlify.toml)
+  → Try running "npm run build" locally to reproduce
+
+  Where to see function logs:
+  → Netlify dashboard → Functions → click any function → "Logs"
+
+
+================================================================================
+  10. FREE TIER LIMITS
+================================================================================
+
+  Netlify (Free):
+  ┌──────────────────────┬────────────────┬─────────────────────────────────┐
+  │ Resource             │ Limit          │ Your Usage                      │
+  ├──────────────────────┼────────────────┼─────────────────────────────────┤
+  │ Function invocations │ 125K/month     │ ~3K (polling every 15 min)      │
+  │ Function timeout     │ 10 seconds     │ OK (batch optimized)            │
+  │ Bandwidth            │ 100 GB/month   │ Tiny (React SPA ~200KB)         │
+  │ Build minutes        │ 300/month      │ ~1 min per deploy               │
+  └──────────────────────┴────────────────┴─────────────────────────────────┘
+
+  Supabase (Free):
+  ┌──────────────────────┬────────────────┬─────────────────────────────────┐
+  │ Resource             │ Limit          │ Your Usage                      │
+  ├──────────────────────┼────────────────┼─────────────────────────────────┤
+  │ Database             │ 500 MB         │ Very small (text data only)     │
+  │ API requests         │ Unlimited      │ N/A                             │
+  │ Projects             │ 2              │ 1                               │
+  │ Bandwidth            │ 5 GB/month     │ Minimal (small JSON payloads)   │
+  └──────────────────────┴────────────────┴─────────────────────────────────┘
+
+  ⚠️  Supabase pauses inactive free-tier projects after 7 days of no
+  activity. Setting up the cron job (Section 7) prevents this since
+  it hits the database every 15 minutes.
+
+
+================================================================================
+  LOCAL DEVELOPMENT
+================================================================================
+
+  To run locally:
+
+  1. Copy .env.example to .env and fill in your values:
+       cp .env.example .env
+
+  2. Install dependencies:
+       npm install
+
+  3. Start the dev server:
+       Option A (with Netlify CLI — recommended):
+         npx netlify dev
+         → Runs at http://localhost:8888
+
+       Option B (frontend only):
+         npm run dev
+         → Runs at http://localhost:5173
+         → API calls won't work without Netlify CLI
+
+
+================================================================================
+  PROJECT STRUCTURE
+================================================================================
+
+  fbLeadsExtractor/
+  ├── frontend/                  # React + Vite frontend
+  │   ├── src/
+  │   │   ├── components/        # React page components
+  │   │   │   ├── Home.tsx       # OAuth connection page
+  │   │   │   ├── Dashboard.tsx  # Integration management
+  │   │   │   ├── NewIntegration.tsx  # Integration wizard
+  │   │   │   └── History.tsx    # Activity log viewer
+  │   │   ├── lib/api.ts         # API client (calls /api/*)
+  │   │   ├── App.tsx            # Router setup
+  │   │   ├── main.tsx           # Entry point
+  │   │   └── index.css          # Tailwind imports
+  │   └── dist/                  # Built frontend (auto-generated)
+  │
+  ├── netlify/functions/         # Netlify serverless functions
+  │   ├── lib/
+  │   │   ├── supabase.ts        # Database operations
+  │   │   ├── facebook.ts        # Facebook Graph API calls
+  │   │   └── google-sheets.ts   # Google Sheets/Drive API calls
+  │   ├── oauth-facebook.ts      # Starts Facebook OAuth flow
+  │   ├── oauth-google.ts        # Starts Google OAuth flow
+  │   ├── oauth-callback.ts      # Handles OAuth redirect
+  │   ├── integrations.ts        # CRUD for integrations
+  │   ├── poll-leads.ts          # Fetches leads → writes to Sheets
+  │   ├── list-pages.ts          # Lists Facebook pages
+  │   ├── list-forms.ts          # Lists lead forms for a page
+  │   ├── get-form-fields.ts     # Gets form field structure
+  │   ├── list-spreadsheets.ts   # Lists Google Sheets
+  │   ├── list-worksheets.ts     # Lists worksheets in a sheet
+  │   ├── get-sheet-headers.ts   # Gets column headers from row 1
+  │   ├── get-history.ts         # Gets audit log entries
+  │   └── dist/                  # Compiled functions (auto-generated)
+  │
+  ├── supabase/schema.sql        # Database schema (run once)
+  ├── netlify.toml               # Netlify build configuration
+  ├── .env.example               # Template for environment variables
+  └── package.json               # Root workspace config
+
+================================================================================

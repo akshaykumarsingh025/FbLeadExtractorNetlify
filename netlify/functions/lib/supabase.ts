@@ -3,6 +3,10 @@ import { createClient } from '@supabase/supabase-js'
 const supabaseUrl = process.env.SUPABASE_URL || ''
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || ''
 
+if (!supabaseUrl || !supabaseKey) {
+  console.warn('Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY environment variables')
+}
+
 export const supabase = createClient(supabaseUrl, supabaseKey)
 
 export async function getUser(userId: string) {
@@ -155,5 +159,56 @@ export async function deleteIntegration(integrationId: string) {
     .from('integrations')
     .delete()
     .eq('id', integrationId)
+  if (error) throw error
+}
+
+// ── Batch operations for poll-leads performance ──
+
+/**
+ * Check which leads have already been processed in a single query.
+ * Returns a Set of facebook_lead_ids that are already in the database.
+ */
+export async function batchCheckProcessedLeads(
+  integrationId: string,
+  facebookLeadIds: string[]
+): Promise<Set<string>> {
+  if (facebookLeadIds.length === 0) return new Set()
+  const { data, error } = await supabase
+    .from('processed_leads')
+    .select('facebook_lead_id')
+    .eq('integration_id', integrationId)
+    .in('facebook_lead_id', facebookLeadIds)
+  if (error) throw error
+  return new Set((data || []).map(d => d.facebook_lead_id))
+}
+
+/**
+ * Mark multiple leads as processed/failed in a single insert.
+ * Uses upsert with ignoreDuplicates to safely handle race conditions
+ * where the same lead might be processed twice (UNIQUE constraint on
+ * facebook_lead_id + integration_id prevents actual duplicates).
+ */
+export async function batchMarkLeadsProcessed(leads: Array<{
+  integrationId: string
+  facebookLeadId: string
+  facebookFormId: string
+  data: Record<string, unknown>
+  sheetRowId?: string
+  status: 'processed' | 'failed' | 'skipped'
+  errorMessage?: string
+}>) {
+  if (leads.length === 0) return
+  const rows = leads.map(l => ({
+    integration_id: l.integrationId,
+    facebook_lead_id: l.facebookLeadId,
+    facebook_form_id: l.facebookFormId,
+    data: l.data,
+    sheet_row_id: l.sheetRowId,
+    status: l.status,
+    error_message: l.errorMessage,
+  }))
+  const { error } = await supabase
+    .from('processed_leads')
+    .upsert(rows, { onConflict: 'facebook_lead_id,integration_id', ignoreDuplicates: true })
   if (error) throw error
 }

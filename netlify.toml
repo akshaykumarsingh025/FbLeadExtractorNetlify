@@ -4,6 +4,9 @@
   functions = "netlify/functions/dist"
   base = "."
 
+[build.environment]
+  NODE_VERSION = "18"
+
 [dev]
   framework = "vite"
 

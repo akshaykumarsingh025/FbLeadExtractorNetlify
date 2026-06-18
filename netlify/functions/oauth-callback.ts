@@ -74,7 +74,7 @@ export const handler: Handler = async (event: HandlerEvent) => {
       expiresAt,
     })
 
-    const clientUrl = process.env.URL || 'http://localhost:5173'
+    const clientUrl = process.env.URL || 'http://localhost:8888'
     return {
       statusCode: 302,
       headers: { Location: `${clientUrl}/?auth=success&service=${service}` },
