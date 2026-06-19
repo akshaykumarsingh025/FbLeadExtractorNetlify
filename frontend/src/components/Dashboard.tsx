@@ -46,9 +46,9 @@ export default function Dashboard({ userId }: Props) {
     setSyncMessage('')
     try {
       const result = await triggerPoll()
-      const summary = (result.results || [])
-        .map((r: { integration: string; processed?: number; failed?: number; error?: string }) =>
-          r.error ? `${r.integration}: failed` : `${r.integration}: ${r.processed || 0} new`
+      const summary = (result.processed || [])
+        .map((r: { integration: string; leads?: number; error?: string }) =>
+          r.error ? `${r.integration}: failed` : `${r.integration}: ${r.leads || 0} new`
         )
       setSyncMessage(summary.length ? summary.join(' · ') : 'No active integrations')
       load() // refresh last_polled_at

@@ -63,14 +63,14 @@ export const handler: Handler = async (event: HandlerEvent) => {
       }).eq('id', body.id)
       if (error) throw error
 
-      return { statusCode: 200, body: 'Updated' }
+      return { statusCode: 200, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ success: true }) }
     }
 
     if (method === 'DELETE') {
       const id = event.queryStringParameters?.id
       if (!id) return { statusCode: 400, body: 'Missing id' }
       await deleteIntegration(id)
-      return { statusCode: 200, body: 'Deleted' }
+      return { statusCode: 200, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ success: true }) }
     }
 
     return { statusCode: 405, body: 'Method not allowed' }

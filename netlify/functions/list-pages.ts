@@ -11,7 +11,8 @@ export const handler: Handler = async (event: HandlerEvent) => {
     if (!conn) return { statusCode: 400, body: 'Facebook not connected' }
 
     const pages = await fetchUserPages(conn.access_token)
-    return { statusCode: 200, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(pages) }
+    const safe = pages.map((p: { id: string; name: string }) => ({ id: p.id, name: p.name }))
+    return { statusCode: 200, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(safe) }
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Failed'
     return { statusCode: 500, body: message }

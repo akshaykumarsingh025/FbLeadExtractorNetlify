@@ -157,6 +157,6 @@ async function processIntegration(integration: any) {
       details: { error: msg, leadsAttempted: extractedLeads.length },
     })
 
-    return { integration: integration.name, leads: 0 }
+    return { integration: integration.name, leads: 0, error: msg }
   }
 }

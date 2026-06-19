@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { getPages, getForms, getFormFields, getSpreadsheets, getWorksheets, getSheetHeaders, createIntegration } from '../lib/api'
-import { ArrowLeft, ArrowRight, Check } from 'lucide-react'
+import { getPages, getForms, getFormFields, getSpreadsheets, getWorksheets, getSheetHeaders, createIntegration, createSpreadsheet } from '../lib/api'
+import { ArrowLeft, ArrowRight, Check, Plus } from 'lucide-react'
 
 interface Props {
   userId: string
@@ -35,6 +35,10 @@ export default function NewIntegration({ userId }: Props) {
   const [mappings, setMappings] = useState<Mapping[]>([])
   const [saving, setSaving] = useState(false)
 
+  const [sheetMode, setSheetMode] = useState<'existing' | 'new'>('existing')
+  const [newSheetName, setNewSheetName] = useState('')
+  const [creating, setCreating] = useState(false)
+
   useEffect(() => {
     getPages(userId).then(setPages).catch(() => {})
     getSpreadsheets(userId).then(setSheets).catch(() => {})
@@ -55,6 +59,7 @@ export default function NewIntegration({ userId }: Props) {
     if (formId) {
       const f = await getFormFields(userId, formId)
       setFormFields(f.questions || [])
+      setNewSheetName(f.name || 'Lead Data')
     }
   }
 
@@ -81,6 +86,30 @@ export default function NewIntegration({ userId }: Props) {
     setMappings(prev => prev.map((m, i) => i === index ? { ...m, facebookField } : m))
   }
 
+  async function handleCreateSheet() {
+    if (!newSheetName.trim() || formFields.length === 0) return
+    setCreating(true)
+    try {
+      const headers = formFields.map(f => f.label)
+      const sheet = await createSpreadsheet(userId, newSheetName.trim(), headers)
+      const newSheet = { id: sheet.id, name: sheet.name || newSheetName }
+      setSheets(prev => [newSheet, ...prev])
+      setSelectedSheet(sheet.id)
+      setWorksheets(['Sheet1'])
+      setSelectedWorksheet('Sheet1')
+      setSheetHeaders(headers)
+      setMappings(headers.map((h, i) => ({
+        facebookField: formFields[i]?.key || '',
+        sheetColumn: h,
+      })))
+      setSheetMode('existing')
+    } catch {
+      alert('Failed to create spreadsheet')
+    } finally {
+      setCreating(false)
+    }
+  }
+
   async function handleSave() {
     setSaving(true)
     try {
@@ -100,9 +129,10 @@ export default function NewIntegration({ userId }: Props) {
     }
   }
 
+  const googleStepDone = !!selectedSheet && !!selectedWorksheet
   const steps = [
     { key: 'facebook', label: 'Facebook', done: !!selectedForm },
-    { key: 'google', label: 'Google Sheets', done: !!selectedSheet && !!selectedWorksheet },
+    { key: 'google', label: 'Google Sheets', done: googleStepDone },
     { key: 'mapping', label: 'Field Mapping', done: mappings.some(m => m.facebookField) },
     { key: 'confirm', label: 'Confirm', done: false },
   ]
@@ -151,28 +181,80 @@ export default function NewIntegration({ userId }: Props) {
       {step === 'google' && (
         <div className="bg-white border border-slate-200 rounded-xl p-6">
           <h2 className="text-xl font-bold text-slate-800 mb-1">Select Google Sheet</h2>
-          <p className="text-sm text-slate-400 mb-6">Choose where to send the lead data</p>
+          <p className="text-sm text-slate-400 mb-6">Choose an existing sheet or create a new one with matching columns</p>
 
-          <label className="block text-sm font-medium text-slate-600 mb-1">Spreadsheet</label>
-          <select value={selectedSheet} onChange={e => onSheetChange(e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2 mb-4">
-            <option value="">Select a spreadsheet...</option>
-            {sheets.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-          </select>
+          <div className="flex gap-2 mb-6">
+            <button
+              onClick={() => setSheetMode('existing')}
+              className={`flex-1 py-2 text-sm font-medium rounded-lg border ${sheetMode === 'existing' ? 'bg-indigo-50 border-indigo-300 text-indigo-700' : 'border-slate-200 text-slate-500'}`}
+            >
+              Use Existing Sheet
+            </button>
+            <button
+              onClick={() => setSheetMode('new')}
+              className={`flex-1 py-2 text-sm font-medium rounded-lg border ${sheetMode === 'new' ? 'bg-indigo-50 border-indigo-300 text-indigo-700' : 'border-slate-200 text-slate-500'}`}
+            >
+              <span className="inline-flex items-center gap-1"><Plus className="w-3.5 h-3.5" /> Create New Sheet</span>
+            </button>
+          </div>
 
-          {selectedSheet && (
+          {sheetMode === 'existing' && (
             <>
-              <label className="block text-sm font-medium text-slate-600 mb-1">Worksheet</label>
-              <select value={selectedWorksheet} onChange={e => onWorksheetChange(e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2 mb-6">
-                {worksheets.map(w => <option key={w} value={w}>{w}</option>)}
+              <label className="block text-sm font-medium text-slate-600 mb-1">Spreadsheet</label>
+              <select value={selectedSheet} onChange={e => onSheetChange(e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2 mb-4">
+                <option value="">Select a spreadsheet...</option>
+                {sheets.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
               </select>
+
+              {selectedSheet && (
+                <>
+                  <label className="block text-sm font-medium text-slate-600 mb-1">Worksheet</label>
+                  <select value={selectedWorksheet} onChange={e => onWorksheetChange(e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2 mb-6">
+                    {worksheets.map(w => <option key={w} value={w}>{w}</option>)}
+                  </select>
+                </>
+              )}
             </>
           )}
 
-          <div className="flex justify-between">
+          {sheetMode === 'new' && (
+            <>
+              <label className="block text-sm font-medium text-slate-600 mb-1">Sheet Name</label>
+              <input
+                value={newSheetName}
+                onChange={e => setNewSheetName(e.target.value)}
+                placeholder="e.g. My Lead Data"
+                className="w-full border border-slate-200 rounded-lg px-3 py-2 mb-4"
+              />
+
+              {formFields.length > 0 && (
+                <div className="mb-6">
+                  <label className="block text-sm font-medium text-slate-600 mb-2">Columns will be auto-created from your form fields:</label>
+                  <div className="flex flex-wrap gap-2">
+                    {formFields.map(f => (
+                      <span key={f.key} className="px-2.5 py-1 bg-indigo-50 text-indigo-700 rounded-md text-xs font-medium">{f.label}</span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <button
+                onClick={handleCreateSheet}
+                disabled={creating || !newSheetName.trim() || formFields.length === 0}
+                className="w-full py-2.5 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 disabled:opacity-40 flex items-center justify-center gap-2"
+              >
+                <Plus className="w-4 h-4" /> {creating ? 'Creating...' : 'Create Sheet & Continue'}
+              </button>
+            </>
+          )}
+
+          <div className="flex justify-between mt-6">
             <button onClick={() => setStep('facebook')} className="px-5 py-2 border border-slate-200 rounded-lg text-slate-600">Back</button>
-            <button onClick={() => setStep('mapping')} disabled={!selectedWorksheet} className="flex items-center gap-2 px-5 py-2 bg-indigo-600 text-white rounded-lg font-medium disabled:opacity-40">
-              Next <ArrowRight className="w-4 h-4" />
-            </button>
+            {sheetMode === 'existing' && (
+              <button onClick={() => setStep('mapping')} disabled={!selectedWorksheet} className="flex items-center gap-2 px-5 py-2 bg-indigo-600 text-white rounded-lg font-medium disabled:opacity-40">
+                Next <ArrowRight className="w-4 h-4" />
+              </button>
+            )}
           </div>
         </div>
       )}

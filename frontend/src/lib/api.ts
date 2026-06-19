@@ -51,8 +51,8 @@ export function createIntegration(userId: string, data: Record<string, unknown>)
   })
 }
 
-export function updateIntegration(data: Record<string, unknown>) {
-  return fetchApi('/integrations', {
+export function updateIntegration(userId: string, data: Record<string, unknown>) {
+  return fetchApi(`/integrations?userId=${encodeURIComponent(userId)}`, {
     method: 'PUT',
     body: JSON.stringify(data),
   })
@@ -68,6 +68,13 @@ export function getHistory(userId: string, integrationId?: string) {
   let path = `/get-history?userId=${encodeURIComponent(userId)}`
   if (integrationId) path += `&integrationId=${encodeURIComponent(integrationId)}`
   return fetchApi(path)
+}
+
+export function createSpreadsheet(userId: string, title: string, headers: string[]) {
+  return fetchApi('/create-spreadsheet', {
+    method: 'POST',
+    body: JSON.stringify({ userId, title, headers }),
+  })
 }
 
 export function triggerPoll() {
