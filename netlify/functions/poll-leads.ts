@@ -6,7 +6,7 @@ import {
   addAuditLog,
   updateIntegrationLastPolled,
 } from './lib/supabase.js'
-import { fetchLeads, extractLeadFields } from './lib/facebook.js'
+import { fetchLeads, extractLeadFields, ensureFacebookToken } from './lib/facebook.js'
 import { ensureAccessToken, getSheetHeaders, appendRows } from './lib/google-sheets.js'
 
 /**
@@ -18,9 +18,15 @@ import { ensureAccessToken, getSheetHeaders, appendRows } from './lib/google-she
  * - Duplicate-safe via UNIQUE constraint + upsert ignoreDuplicates
  */
 export const handler: Handler = async (event: HandlerEvent) => {
+  // Require a shared secret for any request that doesn't originate from the
+  // in-app "Sync Now" button (which sends a JSON body). This prevents the
+  // public /api/poll-leads URL from being abused to drain the function quota.
   const cronSecret = event.headers?.['x-cron-secret']
-  if (cronSecret && cronSecret !== process.env.CRON_SECRET) {
-    return { statusCode: 401, body: 'Unauthorized' }
+  const fromUI = event.httpMethod === 'POST' && event.body
+  if (process.env.CRON_SECRET) {
+    if (cronSecret !== process.env.CRON_SECRET && !fromUI) {
+      return { statusCode: 401, body: 'Unauthorized' }
+    }
   }
 
   try {
@@ -62,7 +68,7 @@ async function processIntegration(integration: any) {
 
   // Step 1: Fetch leads from Facebook + refresh Google token in parallel
   const [leads, gsToken] = await Promise.all([
-    fetchLeads(integration.facebook_form_id, fbConn.access_token),
+    fetchLeads(integration.facebook_form_id, await ensureFacebookToken(fbConn)),
     ensureAccessToken(gsConn),
   ])
 

@@ -1,3 +1,5 @@
+import { supabase } from './supabase.js'
+
 const FB_GRAPH_URL = 'https://graph.facebook.com/v19.0'
 
 interface FacebookPage {
@@ -17,6 +19,59 @@ interface FacebookLead {
     name: string
     values: string[]
   }>
+}
+
+interface FacebookConnection {
+  id: string
+  access_token: string
+  expires_at?: string | null
+}
+
+/**
+ * Ensure we always call Facebook with a valid token, refreshing proactively
+ * before expiry. Facebook long-lived user tokens last ~60 days and can be
+ * renewed via the same fb_exchange_token grant — so once the user connects,
+ * the connection stays alive indefinitely (including across code pushes)
+ * without requiring a manual re-login.
+ */
+export async function ensureFacebookToken(connection: FacebookConnection): Promise<string> {
+  const token = connection.access_token
+  const expiresAt = connection.expires_at
+
+  // No expiry known OR still comfortably valid (with a 1-hour safety margin)?
+  const SAFE_MS = 60 * 60 * 1000
+  if (!expiresAt || new Date(expiresAt).getTime() - Date.now() > SAFE_MS) {
+    return token
+  }
+
+  // Token is close to expiry — renew it.
+  const params = new URLSearchParams({
+    grant_type: 'fb_exchange_token',
+    client_id: process.env.FACEBOOK_APP_ID || '',
+    client_secret: process.env.FACEBOOK_APP_SECRET || '',
+    fb_exchange_token: token,
+  })
+
+  const res = await fetch(`https://graph.facebook.com/v19.0/oauth/access_token?${params}`)
+  if (res.ok) {
+    const data = await res.json()
+    const newExpiresAt = data.expires_in
+      ? new Date(Date.now() + data.expires_in * 1000).toISOString()
+      : undefined
+    await supabase
+      .from('connections')
+      .update({
+        access_token: data.access_token,
+        expires_at: newExpiresAt,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', connection.id)
+    return data.access_token
+  }
+
+  // If renewal fails (e.g. token already invalid), fall back to the stored
+  // token — the API call will surface the real error if it has expired.
+  return token
 }
 
 export async function fetchUserPages(accessToken: string): Promise<FacebookPage[]> {

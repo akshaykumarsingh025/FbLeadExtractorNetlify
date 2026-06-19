@@ -1,6 +1,6 @@
 import type { Handler, HandlerEvent } from '@netlify/functions'
 import { getConnection } from './lib/supabase.js'
-import { fetchPageForms } from './lib/facebook.js'
+import { fetchPageForms, ensureFacebookToken } from './lib/facebook.js'
 
 export const handler: Handler = async (event: HandlerEvent) => {
   const userId = event.queryStringParameters?.userId
@@ -11,7 +11,8 @@ export const handler: Handler = async (event: HandlerEvent) => {
     const conn = await getConnection(userId, 'facebook')
     if (!conn) return { statusCode: 400, body: 'Facebook not connected' }
 
-    const forms = await fetchPageForms(pageId, conn.access_token)
+    const token = await ensureFacebookToken(conn)
+    const forms = await fetchPageForms(pageId, token)
     return { statusCode: 200, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(forms) }
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Failed'

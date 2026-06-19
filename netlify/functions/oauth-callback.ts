@@ -30,6 +30,7 @@ export const handler: Handler = async (event: HandlerEvent) => {
     }
 
     if (service === 'facebook') {
+      // Step 1: exchange authorization code for a (short-lived) access token
       const params = new URLSearchParams({
         client_id: process.env.FACEBOOK_APP_ID || '',
         client_secret: process.env.FACEBOOK_APP_SECRET || '',
@@ -41,7 +42,26 @@ export const handler: Handler = async (event: HandlerEvent) => {
         const err = await res.json()
         throw new Error(err.error?.message || 'Token exchange failed')
       }
-      tokenData = await res.json()
+      const shortLived = await res.json()
+
+      // Step 2: exchange the short-lived token for a long-lived one (~60 days).
+      // Long-lived tokens can be refreshed again via the same grant before they
+      // expire (see ensureFacebookToken), which keeps the Facebook connection
+      // alive indefinitely across code pushes without requiring re-login.
+      try {
+        const longParams = new URLSearchParams({
+          grant_type: 'fb_exchange_token',
+          client_id: process.env.FACEBOOK_APP_ID || '',
+          client_secret: process.env.FACEBOOK_APP_SECRET || '',
+          fb_exchange_token: shortLived.access_token,
+        })
+        const longRes = await fetch(`https://graph.facebook.com/v19.0/oauth/access_token?${longParams}`)
+        tokenData = longRes.ok ? await longRes.json() : shortLived
+      } catch {
+        // Fall back to the short-lived token; ensureFacebookToken will upgrade
+        // it to long-lived on the next access.
+        tokenData = shortLived
+      }
     } else {
       const params = new URLSearchParams({
         client_id: process.env.GOOGLE_CLIENT_ID || '',

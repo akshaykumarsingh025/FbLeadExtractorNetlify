@@ -9,5 +9,7 @@ jobs:
     steps:
       - name: Trigger Netlify Sync Endpoint
         run: |
-          curl -X POST "${{ secrets.PROD_URL }}/api/poll-leads" \
-          -H "Content-Type: application/json"
+          curl -sS -X POST "${{ secrets.PROD_URL }}/api/poll-leads" \
+            -H "Content-Type: application/json" \
+            -H "X-Cron-Secret: ${{ secrets.CRON_SECRET }}" \
+            --data '{}' || true
