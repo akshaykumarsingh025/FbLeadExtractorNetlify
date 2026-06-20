@@ -23,7 +23,7 @@ app.get('/api/oauth-facebook', (req, res) => {
     client_id: clientId,
     redirect_uri: redirectUri,
     state: JSON.stringify({ userId, service: 'facebook' }),
-    scope: 'pages_show_list,pages_read_engagement,pages_manage_ads,pages_manage_leads,pages_read_user_content',
+    scope: 'pages_show_list,pages_read_engagement,pages_manage_ads,leads_retrieval,pages_read_user_content',
     response_type: 'code',
   })
 
